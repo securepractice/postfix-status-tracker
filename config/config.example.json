@@ -1,0 +1,37 @@
+{
+  "type": "simulation",
+  "source": "smtp.example.net",
+  "log_file": "/var/log/mail.log",
+  "state_file": "/var/lib/postfix-status-tracker/state.json",
+  "lock_file": "/var/run/postfix-status-tracker.lock",
+  "send_empty_batches": false,
+  "batch_max_entries": 500,
+  "endpoints": [
+    {
+      "name": "primary-api",
+      "url": "https://api1.example.com/postfix/status",
+      "auth_type": "headers",
+      "key": "YOUR_PRIMARY_KEY",
+      "secret": "YOUR_PRIMARY_SECRET",
+      "timeout_sec": 10,
+      "key_header": "X-API-Key",
+      "secret_header": "X-API-Secret"
+    },
+    {
+      "name": "secondary-api",
+      "url": "https://api2.example.com/postfix/status",
+      "auth_type": "basic",
+      "key": "YOUR_BASIC_USERNAME",
+      "secret": "YOUR_BASIC_PASSWORD",
+      "timeout_sec": 10
+    },
+    {
+      "name": "tertiary-api",
+      "url": "https://api3.example.com/postfix/status",
+      "auth_type": "bearer",
+      "key": "YOUR_BEARER_TOKEN",
+      "secret": "IGNORED_FOR_BEARER",
+      "timeout_sec": 10
+    }
+  ]
+}
