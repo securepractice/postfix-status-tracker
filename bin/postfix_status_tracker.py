@@ -299,9 +299,22 @@ def chunk_entries(entries: List[Dict[str, str]], size: int) -> List[List[Dict[st
 	return [entries[i : i + size] for i in range(0, len(entries), size)]
 
 
+def validate_runtime_endpoint_url(url: str) -> None:
+	# Defense-in-depth: validate again at call time to ensure urllib is never used
+	# with unexpected schemes like file://.
+	parsed = urllib.parse.urlparse(url)
+	if parsed.scheme.lower() != "https":
+		raise ValueError(f"Endpoint URL must use https scheme: {url}")
+	if not parsed.netloc:
+		raise ValueError(f"Endpoint URL must include network location: {url}")
+	if parsed.username or parsed.password:
+		raise ValueError(f"Endpoint URL must not embed credentials: {url}")
+
+
 def post_payload(endpoint: Endpoint, payload_bytes: bytes) -> None:
 	# Support fixed-header auth, HTTP Basic Auth, and Bearer tokens without
 	# external dependencies.
+	validate_runtime_endpoint_url(endpoint.url)
 	headers = {
 		"Content-Type": "application/json",
 	}
@@ -315,6 +328,7 @@ def post_payload(endpoint: Endpoint, payload_bytes: bytes) -> None:
 		headers[endpoint.key_header] = endpoint.key
 		headers[endpoint.secret_header] = endpoint.secret
 
+	# endpoint.url is validated before building the request and again at runtime.
 	req = urllib.request.Request(
 		endpoint.url,
 		data=payload_bytes,
@@ -322,7 +336,7 @@ def post_payload(endpoint: Endpoint, payload_bytes: bytes) -> None:
 		headers=headers,
 	)
 	try:
-		with urllib.request.urlopen(req, timeout=endpoint.timeout_sec) as resp:
+		with urllib.request.urlopen(req, timeout=endpoint.timeout_sec) as resp:  # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected  # nosec B310
 			code = resp.getcode()
 			if code < 200 or code >= 300:
 				raise RuntimeError(f"Endpoint {endpoint.name} responded with HTTP {code}")
