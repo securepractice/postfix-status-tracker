@@ -1,0 +1,16 @@
+{
+  "type": "simulation",
+  "source": "smtp.example.net",
+  "entries": [
+    {
+      "queue_id": "4XyzAB1234",
+      "status": "sent",
+      "timestamp": "2026-07-10T14:32:11+02:00"
+    },
+    {
+      "queue_id": "4XyzAB5678",
+      "status": "bounced",
+      "timestamp": "2026-07-10T14:32:45+02:00"
+    }
+  ]
+}
