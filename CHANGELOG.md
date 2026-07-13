@@ -6,6 +6,10 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 ## [0.2.1] - 2026-07-13
 
+### Added
+- Added opt-in stderr debug logging via `--debug-stderr` and `debug_stderr` config.
+- Added detailed debug messages for config/load, state offsets, batch delivery, and failure traces.
+
 ### Fixed
 - Continued processing remaining endpoints/batches when one endpoint delivery fails.
 - Logged per-endpoint delivery failures and returned non-zero when any batch failed.
