@@ -4,6 +4,12 @@ All notable changes to this project are documented in this file.
 
 The format is based on Keep a Changelog and this project follows Semantic Versioning.
 
+## [0.2.1] - 2026-07-13
+
+### Fixed
+- Continued processing remaining endpoints/batches when one endpoint delivery fails.
+- Logged per-endpoint delivery failures and returned non-zero when any batch failed.
+
 ## [0.2.0] - 2026-07-13
 
 ### Added

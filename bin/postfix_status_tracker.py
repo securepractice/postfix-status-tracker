@@ -497,6 +497,7 @@ def main() -> int:
 			# Every endpoint receives the same logical batches so downstream systems
 			# see the same entry grouping for a given cron run.
 			batches = chunk_entries(all_events, batch_max_entries) if all_events else [[]]
+			delivery_failures: List[str] = []
 
 			for endpoint in endpoints:
 				for idx, batch in enumerate(batches, start=1):
@@ -510,16 +511,32 @@ def main() -> int:
 						"entries": batch,
 					}
 					payload_bytes = json.dumps(payload, separators=(",", ":")).encode("utf-8")
-					post_payload(endpoint, payload_bytes)
-					log_info(
-						f"Delivered batch {idx}/{len(batches)} with {len(batch)} entries "
-						f"to endpoint={endpoint.name} url={endpoint.url}"
-					)
+					try:
+						post_payload(endpoint, payload_bytes)
+						log_info(
+							f"Delivered batch {idx}/{len(batches)} with {len(batch)} entries "
+							f"to endpoint={endpoint.name} url={endpoint.url}"
+						)
+					except Exception as exc:
+						failure = (
+							f"Endpoint delivery failed endpoint={endpoint.name} "
+							f"batch={idx}/{len(batches)} entries={len(batch)}: {exc}"
+						)
+						delivery_failures.append(failure)
+						log_error(failure)
+						log_debug_stderr(f"Continuing after delivery failure: {failure}")
 		else:
 			log_info("No new entries detected; skipping endpoint POSTs")
 
 		write_state_atomic(state_path, {"offset": new_offset})
 		log_debug_stderr(f"Persisted state offset={new_offset} at {state_path}")
+		if all_events or send_empty_batches:
+			if delivery_failures:
+				log_error(
+					f"Run completed with endpoint delivery errors: "
+					f"failed_batches={len(delivery_failures)}"
+				)
+				return 1
 		log_info(
 			f"Run complete: parsed_entries={len(all_events)} new_offset={new_offset} log={log_path}"
 		)
