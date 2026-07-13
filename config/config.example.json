@@ -5,6 +5,7 @@
   "state_file": "/var/lib/postfix-status-tracker/state.json",
   "lock_file": "/var/run/postfix-status-tracker.lock",
   "send_empty_batches": false,
+  "debug_stderr": false,
   "batch_max_entries": 500,
   "endpoints": [
     {

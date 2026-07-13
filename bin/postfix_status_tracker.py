@@ -26,6 +26,7 @@ import socket
 import ssl
 import sys
 import tempfile
+import traceback
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -63,6 +64,8 @@ MONTHS = {
 	"Dec": 12,
 }
 
+DEBUG_STDERR = False
+
 # Match only the Postfix lines that already contain a final queue status.
 LINE_RE = re.compile(
 	r"^(?P<month>[A-Z][a-z]{2})\s+"
@@ -94,6 +97,13 @@ def log_info(message: str) -> None:
 
 def log_error(message: str) -> None:
 	syslog.syslog(syslog.LOG_ERR, message)
+
+
+def log_debug_stderr(message: str) -> None:
+	if not DEBUG_STDERR:
+		return
+	ts = dt.datetime.now(dt.timezone.utc).isoformat()
+	print(f"DEBUG[{ts}] {message}", file=sys.stderr, flush=True)
 
 
 def ensure_secure_config(config_path: Path) -> None:
@@ -166,11 +176,17 @@ def load_config(config_path: Path) -> Dict[str, Any]:
 	cfg.setdefault("lock_file", "/var/run/postfix-status-tracker.lock")
 	cfg.setdefault("send_empty_batches", False)
 	cfg.setdefault("batch_max_entries", 500)
+	cfg.setdefault("debug_stderr", False)
 
 	batch_max_entries = int(cfg.get("batch_max_entries", 500))
 	if batch_max_entries <= 0:
 		raise ValueError("batch_max_entries must be > 0")
 	cfg["batch_max_entries"] = batch_max_entries
+
+	debug_stderr_raw = cfg.get("debug_stderr", False)
+	if not isinstance(debug_stderr_raw, bool):
+		raise ValueError("debug_stderr must be true or false")
+	cfg["debug_stderr"] = debug_stderr_raw
 	return cfg
 
 
@@ -350,9 +366,15 @@ def post_payload(endpoint: Endpoint, payload_bytes: bytes) -> None:
 		ssl_context = ssl.create_default_context()
 		ssl_context.check_hostname = False
 		ssl_context.verify_mode = ssl.CERT_NONE
+	log_debug_stderr(
+		f"POST endpoint={endpoint.name} url={endpoint.url} auth_type={endpoint.auth_type} "
+		f"verify_tls={endpoint.verify_tls} timeout_sec={endpoint.timeout_sec} "
+		f"payload_bytes={len(payload_bytes)}"
+	)
 	try:
 		with urllib.request.urlopen(req, timeout=endpoint.timeout_sec, context=ssl_context) as resp:  # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected  # nosec B310
 			code = resp.getcode()
+			log_debug_stderr(f"Endpoint {endpoint.name} responded with HTTP {code}")
 			if code < 200 or code >= 300:
 				raise RuntimeError(f"Endpoint {endpoint.name} responded with HTTP {code}")
 	except urllib.error.HTTPError as exc:
@@ -393,6 +415,11 @@ def main() -> int:
 		default="/etc/postfix-status-tracker/config.json",
 		help="Path to JSON config file (must be mode 0400 or 0600)",
 	)
+	parser.add_argument(
+		"--debug-stderr",
+		action="store_true",
+		help="Enable verbose debug output to stderr for manual troubleshooting",
+	)
 	args = parser.parse_args()
 
 	# Use the mail facility so messages land near the surrounding Postfix logs.
@@ -400,10 +427,16 @@ def main() -> int:
 
 	lock_fd: Optional[int] = None
 	try:
+		global DEBUG_STDERR
 		ensure_runtime_compatibility()
 		# Load configuration before touching log/state files so config errors fail fast.
 		config_path = Path(args.config)
 		cfg = load_config(config_path)
+		DEBUG_STDERR = bool(cfg.get("debug_stderr", False)) or bool(args.debug_stderr)
+		log_debug_stderr(
+			f"Loaded config={config_path} endpoints={len(cfg['_endpoints'])} "
+			f"debug_stderr={DEBUG_STDERR}"
+		)
 		log_path = Path(cfg["log_file"])
 		rotated_path = Path(f"{cfg['log_file']}.1")
 		state_path = Path(cfg["state_file"])
@@ -413,6 +446,7 @@ def main() -> int:
 		batch_max_entries = int(cfg.get("batch_max_entries", 500))
 
 		lock_fd = acquire_lock(lock_path)
+		log_debug_stderr(f"Acquired lock at {lock_path}")
 
 		now = dt.datetime.now().astimezone()
 		tzinfo = now.tzinfo
@@ -428,6 +462,10 @@ def main() -> int:
 			raise FileNotFoundError(f"Log file not found: {log_path}")
 
 		current_size = log_path.stat().st_size
+		log_debug_stderr(
+			f"Read state offset={prev_offset} current_log_size={current_size} "
+			f"log={log_path} rotated={rotated_path}"
+		)
 		all_events: List[Dict[str, str]] = []
 
 		# Detect rotate/truncate by offset being larger than current file size.
@@ -440,6 +478,9 @@ def main() -> int:
 			if rotated_path.exists():
 				rotated_events, _ = parse_events(rotated_path, prev_offset, tzinfo, now)
 				all_events.extend(rotated_events)
+				log_debug_stderr(
+					f"Parsed rotated tail entries={len(rotated_events)} from {rotated_path}"
+				)
 				log_info(
 					f"Parsed {len(rotated_events)} events from rotated file {rotated_path}"
 				)
@@ -447,6 +488,10 @@ def main() -> int:
 
 		current_events, new_offset = parse_events(log_path, prev_offset, tzinfo, now)
 		all_events.extend(current_events)
+		log_debug_stderr(
+			f"Parsed current entries={len(current_events)} total_entries={len(all_events)} "
+			f"new_offset={new_offset}"
+		)
 
 		if all_events or send_empty_batches:
 			# Every endpoint receives the same logical batches so downstream systems
@@ -455,6 +500,10 @@ def main() -> int:
 
 			for endpoint in endpoints:
 				for idx, batch in enumerate(batches, start=1):
+					log_debug_stderr(
+						f"Delivering endpoint={endpoint.name} batch={idx}/{len(batches)} "
+						f"entries={len(batch)}"
+					)
 					payload = {
 						"type": cfg["type"],
 						"source": cfg["source"],
@@ -470,6 +519,7 @@ def main() -> int:
 			log_info("No new entries detected; skipping endpoint POSTs")
 
 		write_state_atomic(state_path, {"offset": new_offset})
+		log_debug_stderr(f"Persisted state offset={new_offset} at {state_path}")
 		log_info(
 			f"Run complete: parsed_entries={len(all_events)} new_offset={new_offset} log={log_path}"
 		)
@@ -477,6 +527,8 @@ def main() -> int:
 	except Exception as exc:
 		message = f"Run failed: {exc}"
 		log_error(message)
+		if DEBUG_STDERR:
+			traceback.print_exc(file=sys.stderr)
 		# Mirror fatal errors to stderr so manual runs do not require syslog access.
 		print(f"ERROR: {message}", file=sys.stderr)
 		return 1

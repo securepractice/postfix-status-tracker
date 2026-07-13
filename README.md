@@ -43,6 +43,8 @@ Notes:
   - `bearer`: sends `Authorization: Bearer <key>`.
 - Events are sent in chunks using `batch_max_entries` (default: `500`).
 - By default, no POST is sent when there are zero new entries (`"send_empty_batches": false`).
+- Optional stderr debug logging can be enabled via `"debug_stderr": true` in config
+  or per run with `--debug-stderr`.
 - A lock file (`/var/run/postfix-status-tracker.lock`) prevents overlapping cron runs.
 - The lock file stores PID metadata; if PID data is stale, it is automatically replaced on next successful run.
 
@@ -199,6 +201,16 @@ Typical log messages include:
 - a final run summary with parsed entry count and the new saved offset
 
 When run manually, fatal errors are also printed to stderr in addition to being sent to syslog.
+
+For troubleshooting, enable verbose debug output to stderr:
+
+```bash
+python3 /opt/postfix-status-tracker/bin/postfix_status_tracker.py \
+  --config /etc/postfix-status-tracker/config.json \
+  --debug-stderr
+```
+
+The same behavior can be enabled persistently via `"debug_stderr": true` in config.
 
 ## Payload Format
 
