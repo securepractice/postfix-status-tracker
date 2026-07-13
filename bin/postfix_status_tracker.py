@@ -229,6 +229,13 @@ def write_lock_metadata(fd: int) -> None:
 	os.fsync(fd)
 
 
+def clear_lock_metadata(fd: int) -> None:
+	# Keep the lock file present, but clear PID metadata on graceful exit.
+	os.lseek(fd, 0, os.SEEK_SET)
+	os.ftruncate(fd, 0)
+	os.fsync(fd)
+
+
 def acquire_lock(lock_path: Path) -> int:
 	# Cron may trigger a new run before the previous one exits. Keep a real
 	# kernel lock and store PID metadata in the lock file for operator visibility.
@@ -236,9 +243,6 @@ def acquire_lock(lock_path: Path) -> int:
 	fd = os.open(str(lock_path), os.O_CREAT | os.O_RDWR, 0o600)
 	try:
 		fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-		prior_pid = read_lock_pid(fd)
-		if prior_pid is not None and prior_pid != os.getpid() and not pid_exists(prior_pid):
-			log_info(f"Recovered stale lock metadata: pid={prior_pid} lock={lock_path}")
 		write_lock_metadata(fd)
 		return fd
 	except BlockingIOError:
@@ -380,14 +384,29 @@ def post_payload(endpoint: Endpoint, payload_bytes: bytes) -> None:
 	except urllib.error.HTTPError as exc:
 		# Include a short response body snippet when available; this usually makes
 		# auth and endpoint misconfiguration issues obvious from syslog alone.
-		body = ""
+		body_excerpt = ""
 		try:
 			body = exc.read().decode("utf-8", errors="replace").strip()
+			if body:
+				# Keep logs compact and single-line for easier syslog filtering.
+				body_excerpt = " ".join(body.split())[:200]
 		except Exception:
-			body = ""
-		if body:
+			body_excerpt = ""
+
+		content_type = ""
+		if exc.headers is not None:
+			content_type = str(exc.headers.get("Content-Type", "")).lower()
+		is_html = "html" in content_type
+		if body_excerpt.lower().startswith(("<!doctype html", "<html")):
+			is_html = True
+
+		if body_excerpt:
+			if is_html:
+				raise RuntimeError(
+					f"Endpoint {endpoint.name} HTTP {exc.code} (HTML error body omitted)"
+				) from exc
 			raise RuntimeError(
-				f"Endpoint {endpoint.name} HTTP {exc.code}: {body[:300]}"
+				f"Endpoint {endpoint.name} HTTP {exc.code}: {body_excerpt}"
 			) from exc
 		raise RuntimeError(f"Endpoint {endpoint.name} HTTP {exc.code}") from exc
 
@@ -551,6 +570,11 @@ def main() -> int:
 		return 1
 	finally:
 		if lock_fd is not None:
+			try:
+				clear_lock_metadata(lock_fd)
+			except Exception:
+				# Best effort only; closing the fd still releases the kernel lock.
+				pass
 			os.close(lock_fd)
 
 

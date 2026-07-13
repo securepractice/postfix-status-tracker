@@ -4,6 +4,12 @@ All notable changes to this project are documented in this file.
 
 The format is based on Keep a Changelog and this project follows Semantic Versioning.
 
+## [0.2.2] - 2026-07-13
+
+### Fixed
+- Omitted verbose HTML endpoint error bodies from logs while retaining concise HTTP status context.
+- Cleared lock file PID metadata on graceful exit to avoid stale-looking lock file contents between runs.
+
 ## [0.2.1] - 2026-07-13
 
 ### Added
