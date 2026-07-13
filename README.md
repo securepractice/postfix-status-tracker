@@ -54,6 +54,7 @@ Each endpoint entry always uses these common fields:
 - `key`: credential value, username, or bearer token, depending on auth mode
 - `secret`: credential value or password, depending on auth mode
 - `timeout_sec`: HTTP timeout in seconds
+- `verify_tls`: whether to verify the endpoint TLS certificate (`true` by default)
 
 ### Header Authentication
 
@@ -74,6 +75,7 @@ Example:
   "auth_type": "headers",
   "key": "YOUR_API_KEY",
   "secret": "YOUR_API_SECRET",
+  "verify_tls": true,
   "timeout_sec": 10,
   "key_header": "X-API-Key",
   "secret_header": "X-API-Secret"
@@ -104,6 +106,7 @@ Example:
   "auth_type": "basic",
   "key": "YOUR_USERNAME",
   "secret": "YOUR_PASSWORD",
+  "verify_tls": true,
   "timeout_sec": 10
 }
 ```
@@ -131,6 +134,7 @@ Example:
   "auth_type": "bearer",
   "key": "YOUR_BEARER_TOKEN",
   "secret": "IGNORED_FOR_BEARER",
+  "verify_tls": true,
   "timeout_sec": 10
 }
 ```
@@ -140,6 +144,9 @@ This produces a request header like:
 ```text
 Authorization: Bearer YOUR_BEARER_TOKEN
 ```
+
+If an endpoint uses a self-signed or private PKI certificate, you can set
+`"verify_tls": false` for that endpoint only.
 
 Quick dry-run check (executes parser logic, useful before enabling cron):
 

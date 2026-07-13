@@ -4,6 +4,18 @@ All notable changes to this project are documented in this file.
 
 The format is based on Keep a Changelog and this project follows Semantic Versioning.
 
+## [0.2.0] - 2026-07-13
+
+### Added
+- Added per-endpoint TLS verification control via `verify_tls` (default `true`).
+- Extended sample config with a local endpoint example using `https://api.local` and disabled TLS verification.
+
+### Changed
+- Updated documentation for endpoint configuration to describe `verify_tls` across all auth modes.
+
+### Chore
+- Ignored local `config/config.json` in git.
+
 ## [0.1.1] - 2026-07-10
 
 ### Fixed

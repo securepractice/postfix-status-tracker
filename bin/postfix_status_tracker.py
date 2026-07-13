@@ -23,6 +23,7 @@ import json
 import os
 import re
 import socket
+import ssl
 import sys
 import tempfile
 import urllib.error
@@ -84,6 +85,7 @@ class Endpoint:
 	timeout_sec: int
 	key_header: str = "X-API-Key"
 	secret_header: str = "X-API-Secret"
+	verify_tls: bool = True
 
 
 def log_info(message: str) -> None:
@@ -123,6 +125,12 @@ def load_config(config_path: Path) -> Dict[str, Any]:
 				f"Endpoint {item.get('name', '<unknown>')} must use HTTPS URL: {item['url']}"
 			)
 
+		verify_tls_raw = item.get("verify_tls", True)
+		if not isinstance(verify_tls_raw, bool):
+			raise ValueError(
+				f"Endpoint {item.get('name', '<unknown>')} verify_tls must be true or false"
+			)
+
 		auth_type = str(item.get("auth_type", "headers")).lower()
 		if auth_type not in ("headers", "basic", "bearer"):
 			raise ValueError(
@@ -146,6 +154,7 @@ def load_config(config_path: Path) -> Dict[str, Any]:
 				timeout_sec=timeout_sec,
 				key_header=item.get("key_header", "X-API-Key"),
 				secret_header=item.get("secret_header", "X-API-Secret"),
+				verify_tls=verify_tls_raw,
 			)
 		)
 
@@ -335,8 +344,14 @@ def post_payload(endpoint: Endpoint, payload_bytes: bytes) -> None:
 		method="POST",
 		headers=headers,
 	)
+	ssl_context: Optional[ssl.SSLContext] = None
+	if not endpoint.verify_tls:
+		# Compatibility switch for endpoints using self-signed or private PKI certs.
+		ssl_context = ssl.create_default_context()
+		ssl_context.check_hostname = False
+		ssl_context.verify_mode = ssl.CERT_NONE
 	try:
-		with urllib.request.urlopen(req, timeout=endpoint.timeout_sec) as resp:  # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected  # nosec B310
+		with urllib.request.urlopen(req, timeout=endpoint.timeout_sec, context=ssl_context) as resp:  # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected  # nosec B310
 			code = resp.getcode()
 			if code < 200 or code >= 300:
 				raise RuntimeError(f"Endpoint {endpoint.name} responded with HTTP {code}")

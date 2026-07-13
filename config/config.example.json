@@ -14,6 +14,7 @@
       "key": "YOUR_PRIMARY_KEY",
       "secret": "YOUR_PRIMARY_SECRET",
       "timeout_sec": 10,
+      "verify_tls": true,
       "key_header": "X-API-Key",
       "secret_header": "X-API-Secret"
     },
@@ -23,7 +24,8 @@
       "auth_type": "basic",
       "key": "YOUR_BASIC_USERNAME",
       "secret": "YOUR_BASIC_PASSWORD",
-      "timeout_sec": 10
+      "timeout_sec": 10,
+      "verify_tls": true
     },
     {
       "name": "tertiary-api",
@@ -31,7 +33,19 @@
       "auth_type": "bearer",
       "key": "YOUR_BEARER_TOKEN",
       "secret": "IGNORED_FOR_BEARER",
-      "timeout_sec": 10
+      "timeout_sec": 10,
+      "verify_tls": true
+    },
+    {
+      "name": "local-api",
+      "url": "https://api.local",
+      "auth_type": "headers",
+      "key": "YOUR_LOCAL_KEY",
+      "secret": "YOUR_LOCAL_SECRET",
+      "timeout_sec": 10,
+      "verify_tls": false,
+      "key_header": "X-API-Key",
+      "secret_header": "X-API-Secret"
     }
   ]
 }
